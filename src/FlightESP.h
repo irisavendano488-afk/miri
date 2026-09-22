@@ -175,6 +175,9 @@ private:
     void startWifiSTA();
     void pumpWifiClients();
     void sendToWifiClients(const char* line, bool newline);
+#if defined(ARDUINO_ARCH_ESP32)
+    void greetWifiClient(WiFiClient* client);
+#endif
 };
 
 #endif /* FlightESP_h */

@@ -375,7 +375,11 @@ void FlightESP::startBle() {
 }
 
 void FlightESP::onBleConnect() {
-    // место для переинициализации после re-connect
+    // Новый клиент подписался на TX — отправляем текущее состояние.
+    sendInfo("INFO", _config.deviceName);
+    sendResolution();
+    sendBattery();
+    sendScreen();
 }
 
 void FlightESP::onBleDisconnect() {
@@ -447,6 +451,22 @@ void FlightESP::sendToWifiClients(const char* line, bool newline) {
     }
 }
 
+void FlightESP::greetWifiClient(WiFiClient* client) {
+    if (!client || !client->connected()) return;
+    char buf[MAX_LINE_LEN * 2];
+    snprintf(buf, sizeof(buf), "INFO %s", _config.deviceName);
+    client->println(buf);
+    snprintf(buf, sizeof(buf), "RES %u %u", _config.screenWidth, _config.screenHeight);
+    client->println(buf);
+    snprintf(buf, sizeof(buf), "BATT %.2f %s", _battery, _config.deviceName);
+    client->println(buf);
+    for (uint8_t i = 0; i < MAX_SCREEN_LINES; i++) {
+        snprintf(buf, sizeof(buf), "L %s", _screen[i]);
+        client->println(buf);
+    }
+    client->println("END");
+}
+
 void FlightESP::pumpWifiClients() {
     if (!_wifiServer) return;
 
@@ -460,6 +480,7 @@ void FlightESP::pumpWifiClients() {
                 *_wifiClients[i] = newClient;
                 _wifiUsed[i] = true;
                 accepted = true;
+                greetWifiClient(_wifiClients[i]);
                 break;
             }
         }
