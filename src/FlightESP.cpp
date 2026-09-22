@@ -43,10 +43,10 @@ FlightESP::FlightESP()
 FlightESP::~FlightESP() {
 #if defined(ARDUINO_ARCH_ESP32)
     for (size_t i = 0; i < MAX_WIFI_CLIENTS; i++) {
-        delete _wifiClients[i];
+        delete reinterpret_cast<WiFiClient*>(_wifiClients[i]);
         _wifiClients[i] = nullptr;
     }
-    delete _wifiServer;
+    delete reinterpret_cast<WiFiServer*>(_wifiServer);
     _wifiServer = nullptr;
 #endif
 }
@@ -101,8 +101,8 @@ void FlightESP::sendLine(const char* line, bool newline) {
 #if defined(ARDUINO_ARCH_ESP32)
         case FLIGHTESP_BLE:
             if (_charTX) {
-                std::string data(line);
-                if (newline) data.push_back('\n');
+                String data(line);
+                if (newline) data += '\n';
                 _charTX->setValue(data);
                 _charTX->notify();
             }
@@ -321,7 +321,7 @@ public:
     explicit FlightESPRxCallback(FlightESP* esp) : _esp(esp) {}
     void onWrite(BLECharacteristic* characteristic) override {
         if (!_esp || !_esp->isAuthed()) return;
-        std::string val = characteristic->getValue();
+        String val = characteristic->getValue();
         for (size_t i = 0; i < val.length(); i++) {
             _esp->feedByte(val[i]);
         }
@@ -335,7 +335,7 @@ public:
     explicit FlightESPAuthCallback(FlightESP* esp) : _esp(esp) {}
     void onWrite(BLECharacteristic* characteristic) override {
         if (!_esp) return;
-        std::string val = characteristic->getValue();
+        String val = characteristic->getValue();
         _esp->authBle(val.c_str());
     }
 private:
@@ -415,7 +415,7 @@ void FlightESP::startWifiAP() {
     WiFi.softAP(_config.deviceName, _config.password);  // SSID = имя устройства
 
     _wifiServer = new WiFiServer(_config.port);
-    _wifiServer->begin();
+    reinterpret_cast<WiFiServer*>(_wifiServer)->begin();
     for (size_t i = 0; i < MAX_WIFI_CLIENTS; i++) {
         _wifiClients[i] = new WiFiClient();
         _wifiUsed[i] = false;
@@ -435,7 +435,7 @@ void FlightESP::startWifiSTA() {
     }
 
     _wifiServer = new WiFiServer(_config.port);
-    _wifiServer->begin();
+    reinterpret_cast<WiFiServer*>(_wifiServer)->begin();
     for (size_t i = 0; i < MAX_WIFI_CLIENTS; i++) {
         _wifiClients[i] = new WiFiClient();
         _wifiUsed[i] = false;
@@ -444,14 +444,15 @@ void FlightESP::startWifiSTA() {
 
 void FlightESP::sendToWifiClients(const char* line, bool newline) {
     for (size_t i = 0; i < MAX_WIFI_CLIENTS; i++) {
-        if (_wifiUsed[i] && _wifiClients[i]->connected()) {
-            _wifiClients[i]->print(line);
-            if (newline) _wifiClients[i]->println();
+        if (_wifiUsed[i] && reinterpret_cast<WiFiClient*>(_wifiClients[i])->connected()) {
+            reinterpret_cast<WiFiClient*>(_wifiClients[i])->print(line);
+            if (newline) reinterpret_cast<WiFiClient*>(_wifiClients[i])->println();
         }
     }
 }
 
-void FlightESP::greetWifiClient(WiFiClient* client) {
+void FlightESP::greetWifiClient(void* raw) {
+    WiFiClient* client = reinterpret_cast<WiFiClient*>(raw);
     if (!client || !client->connected()) return;
     char buf[MAX_LINE_LEN * 2];
     snprintf(buf, sizeof(buf), "INFO %s", _config.deviceName);
@@ -468,19 +469,21 @@ void FlightESP::greetWifiClient(WiFiClient* client) {
 }
 
 void FlightESP::pumpWifiClients() {
-    if (!_wifiServer) return;
+    WiFiServer* server = reinterpret_cast<WiFiServer*>(_wifiServer);
+    if (!server) return;
 
     // принимаем новых клиентов
-    if (_wifiServer->hasClient()) {
-        WiFiClient newClient = _wifiServer->available();
+    if (server->hasClient()) {
+        WiFiClient newClient = server->available();
         bool accepted = false;
         for (size_t i = 0; i < MAX_WIFI_CLIENTS; i++) {
             if (!_wifiUsed[i]) {
-                _wifiClients[i]->stop();
-                *_wifiClients[i] = newClient;
+                WiFiClient* slot = reinterpret_cast<WiFiClient*>(_wifiClients[i]);
+                slot->stop();
+                *slot = newClient;
                 _wifiUsed[i] = true;
                 accepted = true;
-                greetWifiClient(_wifiClients[i]);
+                greetWifiClient(slot);
                 break;
             }
         }
@@ -492,13 +495,14 @@ void FlightESP::pumpWifiClients() {
     // читаем данные от всех клиентов
     for (size_t i = 0; i < MAX_WIFI_CLIENTS; i++) {
         if (!_wifiUsed[i]) continue;
-        if (!_wifiClients[i]->connected()) {
-            _wifiClients[i]->stop();
+        WiFiClient* slot = reinterpret_cast<WiFiClient*>(_wifiClients[i]);
+        if (!slot->connected()) {
+            slot->stop();
             _wifiUsed[i] = false;
             continue;
         }
-        while (_wifiClients[i]->available()) {
-            feedByte((char)_wifiClients[i]->read());
+        while (slot->available()) {
+            feedByte((char)slot->read());
         }
     }
 }

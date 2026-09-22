@@ -21,8 +21,9 @@
 class BLECharacteristic;
 class BLEServer;
 class BLEAdvertising;
-class WiFiServer;
-class WiFiClient;
+// WiFiServer / WiFiClient в ESP32-ядре 3.x — это typedef (NetworkServer /
+// NetworkClient), поэтому forward-объявление невозможно: храним их как void*,
+// а кастим в .cpp, где включены полные заголовки WiFi.h.
 #endif
 
 #define FLIGHTESP_VERSION "1.1.0"
@@ -160,8 +161,8 @@ private:
     BLECharacteristic* _charTX = nullptr;
     BLECharacteristic* _charAuth = nullptr;
     BLEServer*         _bleServer = nullptr;
-    WiFiServer*        _wifiServer = nullptr;
-    WiFiClient*        _wifiClients[MAX_WIFI_CLIENTS];
+    void*              _wifiServer = nullptr;
+    void*              _wifiClients[MAX_WIFI_CLIENTS];
     bool               _wifiUsed[MAX_WIFI_CLIENTS];
 #endif
 
@@ -176,7 +177,7 @@ private:
     void pumpWifiClients();
     void sendToWifiClients(const char* line, bool newline);
 #if defined(ARDUINO_ARCH_ESP32)
-    void greetWifiClient(WiFiClient* client);
+    void greetWifiClient(void* client);
 #endif
 };
 
