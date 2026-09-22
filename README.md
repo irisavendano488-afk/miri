@@ -11,7 +11,7 @@
 - **Кнопки.** `up / down / left / right / OK / back` — добавляются в одну строку кода;
 - **Тумблеры.** Включают/выключают функции: RGB-лента, **scan signal**, зуммер и т.д.;
 - **Данные устройства.** Напряжение батареи в вольтах, имя устройства;
-- **Транспорт:** обычный `Serial`, Bluetooth (классический) или любой `Stream`.
+- **Транспорт:** `Serial`, **Bluetooth LE**, **Wi-Fi** (точка доступа ESP32 или подключение к роутеру). У каждого устройства свой `deviceName`, `password` и разрешение экрана.
 
 ## Установка в Arduino IDE
 
@@ -68,20 +68,60 @@ void onToggle(uint8_t index, bool state) {
 }
 ```
 
+## Настройка устройства (BLE / Wi-Fi)
+
+Вместо `begin(Serial, …)` можно задать всё сразу через конфиг
+(см. пример `04_MyDevice`):
+
+```cpp
+#include <FlightESP.h>
+
+FlightESP esp;
+
+FlightESPConfig cfg;              // значения по умолчанию уже заполнены
+cfg.mode = FLIGHTESP_BLE;         // FLIGHTESP_SERIAL | BLE | WIFI_AP | WIFI_STA
+cfg.deviceName = "QuadCopter";    // имя устройства (BLE/AP)
+cfg.password    = "0000";         // пароль доступа (BLE AUTH); для WIFI_AP >= 8 симв.
+cfg.screenWidth = 128;            // разрешение виртуального экрана
+cfg.screenHeight = 64;
+// для WIFI_AP дополнительно: cfg.port = 9000
+// для WIFI_STA: cfg.wifiSsid = "HomeWiFi", cfg.wifiPassword = "pass"
+
+void setup() {
+  Serial.begin(115200);
+  esp.begin(cfg);
+  esp.addButton(CTRL_UP);
+  esp.addButton(CTRL_OK);
+  esp.addToggle("RGB Strip");
+  esp.onButton(myButtonHandler);
+  esp.setBatteryVoltage(3.70);
+}
+
+void loop() { esp.loop(); }
+```
+
+Что происходит на ESP32:
+- **BLE:** у устройства сервис `11111111-a1b2-c3d4-e5f6-1234567890ab`
+  (RX — write, TX — notify, AUTH — пароль `cfg.password`);
+- **WIFI_AP:** ESP32 раздаёт точку доступа с SSID = `cfg.deviceName`
+  и паролем `cfg.password` (WPA2, минимум 8 символов);
+- **WIFI_STA:** ESP32 подключается к вашему роутеру и публикуется как
+  Bonjour-сервис `_fligthesp._tcp`, порт `cfg.port` (по умолчанию 9000).
+
 ## Протокол (ESP32 ⇄ приложение)
 
-Строковый, построчный, через `Stream`:
+Строковый, построчный: через `Serial`, характеристику BLE `TX` или TCP-соединение.
 
 | Скетч → телефон                | Телефон → скетч          |
 |--------------------------------|--------------------------|
 | `INFO <имя>`                   | `PING`                   |
-| `DISP <имя>` / `L <строка>` / `END` | `BTN up\|down\|left\|right\|ok\|back` |
-| `BATT <вольты> <имя>`          | `TOG <индекс> <0\|1>`    |
+| `L <строка>` … `END`           | `BTN up\|down\|left\|right\|ok\|back` |
+| `RES <w> <h>`                  | `TOG <индекс> <0\|1>`    |
+| `BATT <вольты> <имя>`          | `AUTH <пароль>` (BLE)    |
 | `COL <r> <g> <b> <имя>`        |                          |
 
 Цвет экрана из скетча — `esp.setColor(r, g, b)`: приложение перекрашивает
-виртуальный экран (см. пример `03_ColorScreen`). iOS-адаптер BLE/Wi-Fi
-появится в приложении вслед за протоколом.
+виртуальный экран (см. пример `03_ColorScreen`).
 
 ## Лицензия
 
