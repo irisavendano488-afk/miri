@@ -97,6 +97,12 @@ public:
     void setBatteryVoltage(float volts) { _battery = volts; _dirty = true; }
     void setColor(uint8_t r, uint8_t g, uint8_t b);   // цвет экрана в приложении
 
+    // --- Пиксельный экран (spacedesk/Flipper-style) ---
+    // bpp = бит на пиксель: 1 (монохром, MSB-first упаковка), 8, 16 (RGB565),
+    // 24 (RGB888). Кадр уходит как PIX и кэшируется (пересылается по PING/подключении).
+    void sendFrame(const uint8_t* pixels, uint16_t width, uint16_t height,
+                   uint8_t bpp = 1);
+
     int  buttonCount() const { return _buttonCount; }
     int  toggleCount() const { return _toggleCount; }
     bool toggleState(uint8_t index) const {
@@ -142,6 +148,14 @@ private:
     Toggle          _toggles[MAX_TOGGLES];
     uint8_t         _toggleCount;
 
+    // Кэш последнего пиксельного кадра (для пересылки при PING/подключении).
+    uint8_t*        _frameBuf = nullptr;
+    size_t          _frameCap = 0;
+    size_t          _frameLen = 0;
+    uint16_t        _frameW = 0;
+    uint16_t        _frameH = 0;
+    uint8_t         _frameBpp = 1;
+
     char            _screen[MAX_SCREEN_LINES][MAX_LINE_LEN];
     uint8_t         _screenCount;
     bool            _screenDirty;
@@ -167,6 +181,7 @@ private:
 #endif
 
     void sendLine(const char* line, bool newline);
+    void sendPayloadLine(const String& data);
     void sendInfo(const char* key, const char* value);
     void parseCommand();
     void fireButton(ControlAction action);

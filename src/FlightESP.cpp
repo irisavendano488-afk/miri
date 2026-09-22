@@ -49,6 +49,11 @@ FlightESP::~FlightESP() {
     delete reinterpret_cast<WiFiServer*>(_wifiServer);
     _wifiServer = nullptr;
 #endif
+    if (_frameBuf) {
+        free(_frameBuf);
+        _frameBuf = nullptr;
+        _frameCap = 0;
+    }
 }
 
 // ---------------------------------------------------------------- begin
@@ -128,6 +133,96 @@ void FlightESP::sendResolution() {
     char buf[32];
     snprintf(buf, sizeof(buf), "RES %u %u", _config.screenWidth, _config.screenHeight);
     sendLine(buf, true);
+}
+
+// Отправка длинной строки (напр. кадр PIX): по Wi-Fi/Serial целиком,
+// по BLE — срезами по 180 байт, чтобы уложиться в MTU канала.
+void FlightESP::sendPayloadLine(const String& data) {
+    switch (_config.mode) {
+        case FLIGHTESP_SERIAL:
+            if (_serial) _serial->println(data);
+            break;
+#if defined(ARDUINO_ARCH_ESP32)
+        case FLIGHTESP_BLE: {
+            if (!_charTX) break;
+            size_t total = data.length();
+            if (total == 0) { _charTX->setValue(String("\n")); _charTX->notify(); break; }
+            size_t off = 0;
+            while (off < total) {
+                size_t chunk = 180;
+                if (chunk > total - off) chunk = total - off;
+                String seg = data.substring(off, off + chunk);
+                _charTX->setValue(seg);
+                _charTX->notify();
+                off += chunk;
+            }
+            break;
+        }
+        case FLIGHTESP_WIFI_AP:
+        case FLIGHTESP_WIFI_STA: {
+            for (size_t i = 0; i < MAX_WIFI_CLIENTS; i++) {
+                if (_wifiUsed[i] && reinterpret_cast<WiFiClient*>(_wifiClients[i])->connected()) {
+                    reinterpret_cast<WiFiClient*>(_wifiClients[i])->print(data);
+                    reinterpret_cast<WiFiClient*>(_wifiClients[i])->println();
+                }
+            }
+            break;
+        }
+#endif
+        default:
+            break;
+    }
+}
+
+static const char* FLIGHT_BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static void flightBase64Encode(const uint8_t* in, size_t len, String& out) {
+    out = String();
+    out.reserve(((len + 2) / 3) * 4);
+    for (size_t i = 0; i < len; i += 3) {
+        uint32_t n = (uint32_t)in[i] << 16;
+        if (i + 1 < len) n |= (uint32_t)in[i + 1] << 8;
+        if (i + 2 < len) n |= (uint32_t)in[i + 2];
+        out += FLIGHT_BASE64[(n >> 18) & 63];
+        out += FLIGHT_BASE64[(n >> 12) & 63];
+        out += (i + 1 < len) ? FLIGHT_BASE64[(n >> 6) & 63] : '=';
+        out += (i + 2 < len) ? FLIGHT_BASE64[n & 63] : '=';
+    }
+}
+
+// Пиксельный кадр: "PIX <w> <h> <bpp> <len> <base64>", кэшируется.
+void FlightESP::sendFrame(const uint8_t* pixels, uint16_t width, uint16_t height,
+                          uint8_t bpp) {
+    if (!pixels || width == 0 || height == 0) return;
+    uint32_t totalBits = (uint32_t)width * height * bpp;
+    size_t bytes = (bpp >= 8) ? (totalBits / 8)
+                              : ((totalBits + 7) / 8);
+    if (bytes == 0) return;
+
+    // Кэшируем копию кадра.
+    if (_frameCap < bytes) {
+        uint8_t* nb = (uint8_t*)realloc(_frameBuf, bytes);
+        if (!nb) return;
+        _frameBuf = nb;
+        _frameCap = bytes;
+    }
+    memcpy(_frameBuf, pixels, bytes);
+    _frameLen = bytes;
+    _frameW = width;
+    _frameH = height;
+    _frameBpp = bpp;
+
+    String b64;
+    flightBase64Encode(_frameBuf, _frameLen, b64);
+
+    String line = "PIX ";
+    line += String((unsigned long)width); line += ' ';
+    line += String((unsigned long)height); line += ' ';
+    line += String((unsigned long)bpp); line += ' ';
+    line += String((unsigned long)_frameLen); line += ' ';
+    line += b64;
+
+    sendPayloadLine(line);
 }
 
 // ------------------------------------------------------------ controls
@@ -267,6 +362,7 @@ void FlightESP::parseCommand() {
         sendResolution();
         sendBattery();
         sendScreen(true);
+        if (_frameBuf && _frameLen) sendFrame(_frameBuf, _frameW, _frameH, _frameBpp);
     } else if (strncmp(cmd, "BTN ", 4) == 0) {
         const char* action = cmd + 4;
         ControlAction a = CTRL_NONE;
@@ -383,7 +479,8 @@ void FlightESP::onBleConnect() {
     sendInfo("INFO", _config.deviceName);
     sendResolution();
     sendBattery();
-    sendScreen();
+    sendScreen(true);
+    if (_frameBuf && _frameLen) sendFrame(_frameBuf, _frameW, _frameH, _frameBpp);
 }
 
 void FlightESP::onBleDisconnect() {
