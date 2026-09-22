@@ -138,6 +138,18 @@ void FlightESP::sendScreen() {
     _screenDirty = false;
 }
 
+void FlightESP::setColor(uint8_t r, uint8_t g, uint8_t b) {
+    if (!_transport) return;
+    _transport->print(F("COL "));
+    _transport->print((unsigned int)r);
+    _transport->print(' ');
+    _transport->print((unsigned int)g);
+    _transport->print(' ');
+    _transport->print((unsigned int)b);
+    _transport->print(' ');
+    _transport->println(_deviceName);
+}
+
 void FlightESP::sendBattery() {
     if (!_transport) return;
     _transport->print(F("BATT "));

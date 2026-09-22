@@ -57,6 +57,9 @@ public:
     // --- Пульт ---
     void setBatteryVoltage(float volts) { _battery = volts; _dirty = true; }
 
+    // Цвет виртуального экрана в приложении (0-255). Можно менять в любой момент.
+    void setColor(uint8_t r, uint8_t g, uint8_t b);
+
     int  buttonCount() const { return _buttonCount; }
     int  toggleCount() const { return _toggleCount; }
     bool toggleState(uint8_t index) const {
