@@ -135,6 +135,40 @@ void FlightESP::sendResolution() {
     sendLine(buf, true);
 }
 
+static const char* flightControlName(ControlAction action) {
+    switch (action) {
+        case CTRL_UP:    return "up";
+        case CTRL_DOWN:  return "down";
+        case CTRL_LEFT:  return "left";
+        case CTRL_RIGHT: return "right";
+        case CTRL_OK:    return "ok";
+        case CTRL_BACK:  return "back";
+        default:         return "btn";
+    }
+}
+
+// Описание панели приложения: сколько и какие кнопки/тумблеры добавил скетч.
+// Приложение строит нижнюю панель строго по этим кадрам.
+//   PANEL <nButtons> <nToggles>
+//   BNAME <index> <actionName>   (by addButton, 0-based)
+//   TNAME <index> <title>        (by addToggle, 0-based)
+void FlightESP::sendPanel() {
+    char buf[MAX_LINE_LEN * 2];
+    snprintf(buf, sizeof(buf), "PANEL %u %u",
+             (unsigned)_buttonCount, (unsigned)_toggleCount);
+    sendLine(buf, true);
+    for (uint8_t i = 0; i < _buttonCount; i++) {
+        snprintf(buf, sizeof(buf), "BNAME %u %s",
+                 (unsigned)i, flightControlName((ControlAction)_buttons[i]));
+        sendLine(buf, true);
+    }
+    for (uint8_t i = 0; i < _toggleCount; i++) {
+        snprintf(buf, sizeof(buf), "TNAME %u %s",
+                 (unsigned)i, _toggles[i].title);
+        sendLine(buf, true);
+    }
+}
+
 // Отправка длинной строки (напр. кадр PIX): по Wi-Fi/Serial целиком,
 // по BLE — срезами по 180 байт, чтобы уложиться в MTU канала.
 void FlightESP::sendPayloadLine(const String& data) {
@@ -362,6 +396,7 @@ void FlightESP::parseCommand() {
         sendResolution();
         sendBattery();
         sendScreen(true);
+        sendPanel();
         if (_frameBuf && _frameLen) sendFrame(_frameBuf, _frameW, _frameH, _frameBpp);
     } else if (strncmp(cmd, "BTN ", 4) == 0) {
         const char* action = cmd + 4;
@@ -480,6 +515,7 @@ void FlightESP::onBleConnect() {
     sendResolution();
     sendBattery();
     sendScreen(true);
+    sendPanel();
     if (_frameBuf && _frameLen) sendFrame(_frameBuf, _frameW, _frameH, _frameBpp);
 }
 
@@ -567,6 +603,7 @@ void FlightESP::greetWifiClient(void* raw) {
         client->println(buf);
     }
     client->println("END");
+    sendPanel();
 }
 
 void FlightESP::pumpWifiClients() {

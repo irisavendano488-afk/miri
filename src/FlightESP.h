@@ -26,7 +26,7 @@ class BLEAdvertising;
 // а кастим в .cpp, где включены полные заголовки WiFi.h.
 #endif
 
-#define FLIGHTESP_VERSION "1.1.0"
+#define FLIGHTESP_VERSION "1.2.1"
 
 // Действия кнопок, которые понимает приложение.
 enum ControlAction : uint8_t {
@@ -122,6 +122,7 @@ public:
     void sendScreen(bool force = false);   // принудительно отправить экран
     void sendBattery();                    // отправить напряжение
     void sendResolution();                 // отправить разрешение экрана
+    void sendPanel();                      // отправить описание панели (кнопки/тумблеры)
 
     // --- Сервис: вызывать в loop() ---
     void loop();
