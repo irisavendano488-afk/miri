@@ -206,8 +206,8 @@ void FlightESP::clear() {
     _screenDirty = true;
 }
 
-void FlightESP::sendScreen() {
-    if (!_screenDirty) return;
+void FlightESP::sendScreen(bool force) {
+    if (!force && !_screenDirty) return;
     char buf[2 + MAX_LINE_LEN];
     for (uint8_t i = 0; i < MAX_SCREEN_LINES; i++) {
         snprintf(buf, sizeof(buf), "L %s", _screen[i]);
@@ -263,6 +263,10 @@ void FlightESP::parseCommand() {
 
     if (strcmp(cmd, "PING") == 0) {
         sendInfo("PONG", _config.deviceName);
+        sendInfo("INFO", _config.deviceName);
+        sendResolution();
+        sendBattery();
+        sendScreen(true);
     } else if (strncmp(cmd, "BTN ", 4) == 0) {
         const char* action = cmd + 4;
         ControlAction a = CTRL_NONE;

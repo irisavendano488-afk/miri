@@ -113,7 +113,7 @@ public:
     void newline();                        // перенос строки (движет строки вверх)
     void clear();                          // очистить экран
 
-    void sendScreen();                     // принудительно отправить экран
+    void sendScreen(bool force = false);   // принудительно отправить экран
     void sendBattery();                    // отправить напряжение
     void sendResolution();                 // отправить разрешение экрана
 
